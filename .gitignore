@@ -1,0 +1,12 @@
+# R
+.Rproj.user/
+.Rhistory
+.RData
+.Ruserdata
+
+# OS
+.DS_Store
+Thumbs.db
+
+# brms fitted models are large — regenerate by running the scripts
+outputs/models/*.rds
