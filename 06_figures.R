@@ -181,7 +181,7 @@ p_cat_t <- ggplot(re_t, aes(x = Snail_ID, y = fit, color = infection)) +
   coord_flip() +
   scale_y_reverse() +                              # up = faster = bolder
   scale_color_manual(values = c(Infected = col_infected, Uninfected = col_uninfected)) +
-  labs(x = NULL, y = "Time to emerge(reversed)",
+  labs(x = NULL, y = "Time to emerge\n(log-scale BLUP,reversed)",
        color = "Infection status", title = "b") +
   theme_classic() +
   theme(plot.title = element_text(face = "bold", size = 16),
@@ -395,7 +395,7 @@ p_tte_rn <- ggplot() +
   scale_colour_manual(values = c("Infected"   = col_infected,
                                  "Uninfected" = col_uninfected)) +
   # reversed and capped at the 20-min trial length, so that UP =
-  # faster = bolder, matching panel a
+  
   scale_y_reverse(breaks = seq(0, 45, 10)) +
   geom_hline(yintercept = 20, linetype = "dashed", colour = "gray40") +
   labs(x = NULL, y = "Time to emerge (min)", colour = "Infection status") +

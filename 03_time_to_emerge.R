@@ -277,7 +277,61 @@ summary(m_pred_tte)
 pred_cor_tte <- as_draws_df(m_pred_tte)$cor_Snail_ID__Intercept__sigma_Intercept
 report_cor(pred_cor_tte, "Level x predictability (all snails)")
 
+# =====================================================================
+# PREDICTABILITY (time to emerge), by infection status
+# ---------------------------------------------------------------------
+# Double-hierarchical (distributional) model: each snail gets its own
+# residual SD (sigma) as well as its own mean. The |q| link estimates
+# the among-individual correlation between behavioural level (mean
+# latency) and predictability (residual SD).
+#
+# sigma uses a log link, so a larger sigma-intercept = more variable =
+# LESS predictable. A positive level-predictability correlation
+# therefore means slower-emerging snails are less predictable.
+#
+# Fitted separately within each infection status to test whether
+# predictability differs between infected and uninfected snails.
+#
+# WARNING: with only 30 snails / 270 trials per group plus an extra
+# sigma random-effect layer, these models may diverge or fail to
+# initialise. Check convergence before trusting the estimates.
+# =====================================================================
 
+fit_pred_tte_group <- function(status) {
+  brm(
+    bf(time_to_emerge_cens | cens(censored) ~ Treatment + (1 |q| Snail_ID),
+       sigma                                ~ Treatment + (1 |q| Snail_ID)),
+    family  = lognormal(),
+    data    = subset(total_snails, Infection.status == status),
+    chains  = 4, cores = 4, iter = 4000, warmup = 1000,
+    control = list(adapt_delta = 0.99), seed = 123
+  )
+}
+
+m_pred_tte_inf   <- fit_pred_tte_group("Infected")
+m_pred_tte_uninf <- fit_pred_tte_group("Uninfected")
+
+# Check convergence FIRST (divergences make the estimates unreliable)
+rstan::check_hmc_diagnostics(m_pred_tte_inf$fit)
+rstan::check_hmc_diagnostics(m_pred_tte_uninf$fit)
+
+# Extract the level x predictability correlation from each group
+pred_cor_tte_inf   <- as_draws_df(m_pred_tte_inf)$cor_Snail_ID__Intercept__sigma_Intercept
+pred_cor_tte_uninf <- as_draws_df(m_pred_tte_uninf)$cor_Snail_ID__Intercept__sigma_Intercept
+
+cat("predictability (time to emerge):\n")
+cat("  Infected:   r =", round(mean(pred_cor_tte_inf), 3),
+    " 95% [", round(quantile(pred_cor_tte_inf, 0.025), 3), ", ",
+    round(quantile(pred_cor_tte_inf, 0.975), 3), "]\n", sep = "")
+cat("  Uninfected: r =", round(mean(pred_cor_tte_uninf), 3),
+    " 95% [", round(quantile(pred_cor_tte_uninf, 0.025), 3), ", ",
+    round(quantile(pred_cor_tte_uninf, 0.975), 3), "]\n", sep = "")
+
+# Between-group difference (paired across posterior draws)
+d_pred_tte <- pred_cor_tte_inf - pred_cor_tte_uninf
+cat("  difference (Infected - Uninfected): ", round(mean(d_pred_tte), 3),
+    " 95% [", round(quantile(d_pred_tte, 0.025), 3), ", ",
+    round(quantile(d_pred_tte, 0.975), 3), "]\n", sep = "")
 # =====================================================================
 # 9. SAVE FITTED MODELS
 # ---------------------------------------------------------------------
