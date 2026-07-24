@@ -70,7 +70,42 @@ stopifnot(
 cat("h_cens (climbing height):\n");  print(table(total_snails$h_cens))          # right = 92, none = 448
 cat("\ncensored (time to emerge):\n"); print(table(total_snails$censored))       # right = 134, none = 406
 
+# ---- Censoring by treatment -----------------------------------------
 
+# time to emerge: right-censored = did not emerge within 20 min
+tab_lat <- with(total_snails, table(Treatment, censored))
+
+# climbing height: right-censored = reached the 30 cm ceiling
+tab_hgt <- with(total_snails, table(Treatment, h_cens))
+
+cens_by_treatment <- data.frame(
+  Treatment      = levels(total_snails$Treatment),
+  n              = as.vector(rowSums(tab_lat)),
+  latency_cens   = as.vector(tab_lat[, "right"]),
+  latency_pct    = round(100 * tab_lat[, "right"] / rowSums(tab_lat), 1),
+  height_cens    = as.vector(tab_hgt[, "right"]),
+  height_pct     = round(100 * tab_hgt[, "right"] / rowSums(tab_hgt), 1),
+  row.names = NULL
+)
+
+print(cens_by_treatment)
+
+all_cens <- total_snails %>%
+  group_by(Treatment, Snail_ID) %>%
+  summarise(
+    lat_all_cens = all(censored == "right"),
+    hgt_all_cens = all(h_cens   == "right"),
+    .groups = "drop"
+  ) %>%
+  group_by(Treatment) %>%
+  summarise(
+    snails_lat_all_cens = sum(lat_all_cens),
+    snails_hgt_all_cens = sum(hgt_all_cens),
+    .groups = "drop"
+  )
+
+print(all_cens)
+# Check: latency_cens should sum to 134, height_cens to 92
 # ---- 6. Colour palette (consistent across all plots) ----------------
 
 col_infected   <- "#AC2527"  # red
