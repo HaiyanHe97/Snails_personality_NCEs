@@ -14,12 +14,6 @@
 #
 # tests whether infected snails are lighter or heavier than uninfected
 # snails of the same shell size.
-#
-# NOTE: this is the only frequentist model in the manuscript. Everything
-# else is fitted with brms.
-#
-# Figures S1a and S1b are produced here rather than in the main figure
-# script, since they belong to this check alone.
 # =====================================================================
 
 source("01_setup.R")
