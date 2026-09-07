@@ -30,20 +30,25 @@ total_snails <- read.csv("data/processed/master_snails.csv",
                          header = TRUE, sep = ",",
                          stringsAsFactors = FALSE, fileEncoding = "UTF-8")
 
+names(total_snails)
 
 # ---- 3. Factor levels -----------------------------------------------
 # Reference levels set by design: CON and Uninfected are the baselines.
 # Treatment order (CON, INV, NAT) is kept identical to 00_merge_clean.R.
 
+
+
 total_snails <- total_snails %>%
   mutate(
+    across(c(Weight_g, Height_cm, Aperture_cm, Width_cm),
+           ~ as.numeric(gsub(",", ".", as.character(.x)))),
     Snail_ID         = as.factor(Snail_ID),
     Infection.status = factor(Infection.status, levels = c("Uninfected", "Infected")),
     Treatment        = factor(Treatment,        levels = c("CON", "INV", "NAT")),
     Day.number       = as.factor(Day.number)
   )
 
-
+str(total_snails[, c("Weight_g", "Height_cm", "Aperture_cm", "Width_cm")])
 # ---- 4. Climbing-height censoring indicator -------------------------
 # A snail recorded at exactly 30 cm climbed out of the 30 cm cylinder:
 # its true height is >= 30 and could not be observed -> right-censored.
@@ -56,7 +61,6 @@ total_snails <- total_snails %>%
 total_snails <- total_snails %>%
   mutate(h_cens = ifelse(max_height == 30, "right", "none"))
 
-
 # ---- 5. Checks ------------------------------------------------------
 
 stopifnot(
@@ -64,12 +68,10 @@ stopifnot(
   n_distinct(total_snails$Snail_ID) == 60,
   all(table(total_snails$Snail_ID) == 9),
   sum(total_snails$emerged == 0) == sum(is.na(total_snails$time_to_emerge)),
-  all(total_snails$time_to_emerge <= 20, na.rm = TRUE)
+  all(total_snails$time_to_emerge <= 20, na.rm = TRUE),
+  all(sapply(total_snails[, c("Weight_g", "Height_cm", "Aperture_cm", "Width_cm")], is.numeric)),
+  !any(is.na(total_snails[, c("Weight_g", "Height_cm", "Aperture_cm", "Width_cm")]))
 )
-
-cat("h_cens (climbing height):\n");  print(table(total_snails$h_cens))          # right = 92, none = 448
-cat("\ncensored (time to emerge):\n"); print(table(total_snails$censored))       # right = 134, none = 406
-
 # ---- Censoring by treatment -----------------------------------------
 
 # time to emerge: right-censored = did not emerge within 20 min
