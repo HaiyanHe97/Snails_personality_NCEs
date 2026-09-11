@@ -27,14 +27,14 @@ table(total_snails$h_cens, total_snails$Treatment)
 # =====================================================================
 
 # --- SENSITIVITY (OLD): no censoring, 30 treated as a real value -----
-model_height_old <- lmer(max_height ~ Treatment * Infection.status +
+model_height_old <- lmer(max_height_aw ~ Treatment * Infection.status +
                            (1 | Snail_ID), data = total_snails)
 summary(model_height_old)
 anova(model_height_old, type = 2)
 
 # --- MAIN: right-censored at 30, interaction -------------------------
 m_height_int <- brm(
-  max_height | cens(h_cens) ~ Treatment * Infection.status + (1 | Snail_ID),
+  max_height_aw | cens(h_cens) ~ Treatment * Infection.status + (1 | Snail_ID),
   family  = gaussian(),
   data    = total_snails,
   chains  = CHAINS, cores = 4, iter = ITER, warmup = WARMUP,
@@ -62,7 +62,7 @@ emm_h_inf <- emmeans(m_height_int, ~ Infection.status); pairs(emm_h_inf)
 # ---- 2.1 Overall ----------------------------------------------------
 
 # SENSITIVITY (OLD): rptR, no censoring.
-rpt_height_old <- rpt(max_height ~ Treatment + Infection.status + (1 | Snail_ID),
+rpt_height_old <- rpt(max_height_aw ~ Treatment + Infection.status + (1 | Snail_ID),
                       grname = "Snail_ID", data = total_snails,
                       datatype = "Gaussian", nboot = 1000, npermut = 0)
 summary(rpt_height_old)
@@ -79,7 +79,7 @@ print(R_height_overall)
 # ---- 2.2 By infection status (Treatment only after subsetting) ------
 
 fit_h_inf <- function(status) {
-  brm(max_height | cens(h_cens) ~ Treatment + (1 | Snail_ID),
+  brm(max_height_aw | cens(h_cens) ~ Treatment + (1 | Snail_ID),
       family = gaussian(),
       data   = subset(total_snails, Infection.status == status),
       chains = CHAINS, cores = 4, iter = ITER, warmup = WARMUP,
@@ -96,7 +96,7 @@ print(rbind(Infected = R_h_inf, Uninfected = R_h_uninf))
 # ---- 2.3 By treatment (Infection only after subsetting) -------------
 
 fit_h_trt <- function(trt) {
-  brm(max_height | cens(h_cens) ~ Infection.status + (1 | Snail_ID),
+  brm(max_height_aw | cens(h_cens) ~ Infection.status + (1 | Snail_ID),
       family = gaussian(),
       data   = subset(total_snails, Treatment == trt),
       chains = CHAINS, cores = 4, iter = ITER, warmup = WARMUP,
@@ -134,7 +134,7 @@ blups$infection <- total_snails$Infection.status[
 
 snail_mean <- total_snails %>%
   group_by(Snail_ID, Treatment, Infection.status) %>%
-  summarise(mean_height = mean(max_height), .groups = "drop")
+  summarise(mean_height = mean(max_height_aw), .groups = "drop")
 
 snail_wide <- snail_mean %>%
   pivot_wider(names_from = Treatment, values_from = mean_height)
@@ -151,7 +151,7 @@ cor.test(snail_wide$CON, snail_wide$INV)
 # =====================================================================
 
 m_height_slope <- brm(
-  max_height | cens(h_cens) ~ Treatment + Infection.status +
+  max_height_aw | cens(h_cens) ~ Treatment + Infection.status +
     (1 + Treatment | Snail_ID),
   family  = gaussian(),
   data    = total_snails,
@@ -165,7 +165,7 @@ rstan::check_hmc_diagnostics(m_height_slope$fit)
 
 # ---- Fit by infection status (for reaction-norm figure / cor) -------
 fit_rn_cov <- function(status) {
-  brm(bf(max_height | cens(h_cens) ~ Treatment + (1 + Treatment |q| Snail_ID)),
+  brm(bf(max_height_aw | cens(h_cens) ~ Treatment + (1 + Treatment |q| Snail_ID)),
       data = subset(total_snails, Infection.status == status),
       family = gaussian(),
       chains = CHAINS, cores = 4, iter = ITER, warmup = WARMUP,
@@ -202,7 +202,7 @@ cat("  difference (Infected - Uninfected): ", round(mean(diff_INVNAT), 3),
 # =====================================================================
 
 m_height_pred <- brm(
-  bf(max_height | cens(h_cens) ~ Treatment + Infection.status + (1 |q| Snail_ID),
+  bf(max_height_aw | cens(h_cens) ~ Treatment + Infection.status + (1 |q| Snail_ID),
      sigma ~ Treatment + Infection.status + (1 |q| Snail_ID)),
   family = gaussian(),
   data   = total_snails,
@@ -266,11 +266,14 @@ saveRDS(
 # alone after source("01_setup.R").
 # =====================================================================
 
-# source("01_setup.R")   # uncomment if running standalone
+# source("01_setup.R")   
+
 
 # ---- single model: variances split by infection ---------------------
+
+
 m_h_byinf <- brm(
-  bf(max_height | cens(h_cens) ~ Treatment + Infection.status +
+  bf(max_height_aw | cens(h_cens) ~ Treatment + Infection.status +
        (1 | gr(Snail_ID, by = Infection.status)),   # among-ind SD per group
      sigma ~ Infection.status),                      # residual SD per group
   family  = gaussian(),

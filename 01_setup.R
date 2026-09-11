@@ -32,6 +32,7 @@ total_snails <- read.csv("data/processed/master_snails.csv",
 
 names(total_snails)
 
+
 # ---- 3. Factor levels -----------------------------------------------
 # Reference levels set by design: CON and Uninfected are the baselines.
 # Treatment order (CON, INV, NAT) is kept identical to 00_merge_clean.R.
@@ -49,17 +50,40 @@ total_snails <- total_snails %>%
   )
 
 str(total_snails[, c("Weight_g", "Height_cm", "Aperture_cm", "Width_cm")])
-# ---- 4. Climbing-height censoring indicator -------------------------
-# A snail recorded at exactly 30 cm climbed out of the 30 cm cylinder:
-# its true height is >= 30 and could not be observed -> right-censored.
-# Zeros are NOT censored and are kept as observed values (all 540 trials
-# analysed; see 02_climbing_height.R).
+# ---- 4. Climbing height: height above the waterline -----------------
+# The cylinder was filled to the 3 cm waterline. max_height was recorded
+# from the base, so it includes the 3 cm water column.
 #
-# The time-to-emerge censoring columns (censored, time_to_emerge_cens)
-# are already built in 00_merge_clean.R and are not rebuilt here.
+# Conversion to height ABOVE the waterline (Allert's suggestion):
+#   max_height == 0  -> snail stayed in the water (never emerged) -> 0
+#   max_height == 3  -> just emerged past the waterline, no further
+#                       climbing. Recorded as 3.1 (0.1 cm above water)
+#                       so these are DISTINCT from the in-water zeros.
+#   max_height  > 3  -> emerged; height above water = max_height - 3
+#   max_height == 30 -> climbed out of the cylinder (ceiling)
+#                       -> 27 cm above water, RIGHT-CENSORED
+#
+# Censoring indicator uses the ORIGINAL ceiling hit (max_height == 30).
 
 total_snails <- total_snails %>%
-  mutate(h_cens = ifelse(max_height == 30, "right", "none"))
+  mutate(
+    max_height_aw = case_when(
+      max_height == 0  ~ 0,          # stayed in water
+      max_height == 3  ~ 0.1,        # just above the waterline, no further climb
+      max_height == 30 ~ 27,         # ceiling -> censoring point (30 - 3)
+      TRUE             ~ max_height - 3
+    ),
+    h_cens = ifelse(max_height == 30, "right", "none")
+  )
+
+# sanity checks
+stopifnot(
+  all(total_snails$max_height_aw >= 0),
+  all(total_snails$max_height_aw <= 27),
+  sum(total_snails$max_height == 3)  == sum(total_snails$max_height_aw == 0.1),
+  sum(total_snails$max_height == 0)  == sum(total_snails$max_height_aw == 0),
+  sum(total_snails$h_cens == "right") == sum(total_snails$max_height == 30)
+)
 
 # ---- 5. Checks ------------------------------------------------------
 
