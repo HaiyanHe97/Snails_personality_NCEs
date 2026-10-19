@@ -206,10 +206,10 @@ cat("slope-slope diff (Infected - Uninfected):", round(mean(d), 3),
 
 
 # =====================================================================
-# 8. PREDICTABILITY — double-hierarchical (sigma) model  (additive)
-# EXPLORATORY, consistent with the height DHGLM in 02. sigma has a log
-# link, so larger sigma = less predictable; a positive level-predictability
-# r = slower snails are less predictable. May diverge — check convergence.
+# 8. INDIVIDUAL STABILITY — double-hierarchical (sigma) model (additive)
+# Same structure as the height model in 02. sigma has a log link, so a
+# larger sigma = less stable; a positive mean-sigma correlation = slower
+# snails are less stable. Converged (Rhat = 1.00).
 # =====================================================================
 
 m_pred_tte <- brm(
@@ -223,21 +223,21 @@ m_pred_tte <- brm(
 
 summary(m_pred_tte)
 
-
 pred_cor_tte <- as_draws_df(m_pred_tte)$cor_Snail_ID__Intercept__sigma_Intercept
-cat("level x predictability (all snails): r =", round(median(pred_cor_tte), 3),
+cat("mean x individual stability (all snails): r =", round(median(pred_cor_tte), 3),
     " 95% [", round(quantile(pred_cor_tte, .025), 3), ",",
     round(quantile(pred_cor_tte, .975), 3), "]",
     " P(r>0) =", round(mean(pred_cor_tte > 0), 3), "\n")
 
-# ---- by infection status (30 snails/group + sigma layer: may not converge)
+# ---- by infection status (30 snails/group; init = 0 added to avoid
+#      initialisation failure, as for the height model in 02)
 fit_pred_tte_group <- function(status) {
   brm(bf(time_to_emerge_cens | cens(censored) ~ Treatment + (1 |q| Snail_ID),
          sigma                                ~ Treatment + (1 |q| Snail_ID)),
       family = lognormal(),
       data   = subset(total_snails, Infection.status == status),
       chains = CHAINS, cores = 4, iter = ITER, warmup = WARMUP,
-      control = list(adapt_delta = 0.99), seed = 123)
+      init = 0, control = list(adapt_delta = 0.99), seed = 123)
 }
 
 m_pred_tte_inf   <- fit_pred_tte_group("Infected")
@@ -249,7 +249,7 @@ rstan::check_hmc_diagnostics(m_pred_tte_uninf$fit)
 pred_cor_tte_inf   <- as_draws_df(m_pred_tte_inf)$cor_Snail_ID__Intercept__sigma_Intercept
 pred_cor_tte_uninf <- as_draws_df(m_pred_tte_uninf)$cor_Snail_ID__Intercept__sigma_Intercept
 
-cat("predictability (time to emerge):\n")
+cat("individual stability (time to emerge):\n")
 cat("  Infected:   r =", round(mean(pred_cor_tte_inf), 3),
     " 95% [", round(quantile(pred_cor_tte_inf, 0.025), 3), ", ",
     round(quantile(pred_cor_tte_inf, 0.975), 3), "]\n", sep = "")
@@ -261,8 +261,6 @@ d_pred_tte <- pred_cor_tte_inf - pred_cor_tte_uninf
 cat("  difference (Infected - Uninfected): ", round(mean(d_pred_tte), 3),
     " 95% [", round(quantile(d_pred_tte, 0.025), 3), ", ",
     round(quantile(d_pred_tte, 0.975), 3), "]\n", sep = "")
-
-
 # =====================================================================
 # 9. SAVE FITTED MODELS  (m_int key removed; 06 reads m_tte)
 # =====================================================================

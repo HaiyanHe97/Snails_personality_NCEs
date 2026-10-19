@@ -1,17 +1,16 @@
 # =====================================================================
-# 02  CLIMBING HEIGHT — right-censored at 30 cm
+# 02  CLIMBING HEIGHT — height above the waterline, right-censored at 27 cm
 # ---------------------------------------------------------------------
-# A snail recorded at 30 cm climbed out of the 30 cm cylinder: its true
-# height is >= 30 and could not be observed -> right-censored (92/540).
-# Zeros are NOT censored and kept as observed. All 540 trials kept.
+# 0 = in water; 0.1 = crossed the waterline, no further climbing;
+# 27 = climbed out of the cylinder -> right-censored (92/540).
+# Zeros are NOT censored. All 540 trials kept.
 #
 # MAIN:        right-censored Gaussian model (brms).
-# SENSITIVITY: old lmer, 30 treated as a real value.
+# SENSITIVITY: old lmer, 27 treated as a real value.
 #
-# Effect model is the a-priori FULL model with Treatment x Infection —
-# no additive/interaction model selection, no LOO. The interaction is
-# reported as-is (it is the research question). Repeatability, plasticity
-# and predictability use additive fixed effects (adjustment only).
+# Effect model = a-priori full model (Treatment x Infection), no model
+# selection. Repeatability, plasticity and individual stability use
+# additive fixed effects. Stability model fitted in dm (see section 6).
 #
 # Figures live in 06_figures.R. NOTE: 06 reads models$m_int.
 # =====================================================================
@@ -197,33 +196,70 @@ cat("  difference (Infected - Uninfected): ", round(mean(diff_INVNAT), 3),
 
 
 # =====================================================================
-# 6. PREDICTABILITY — double-hierarchical model  (additive; exploratory)
-# Unstable in earlier runs — check convergence before reporting.
+# 6. INDIVIDUAL STABILITY — double-hierarchical model (additive)
+# Height in dm (cm / 10): on the cm scale the sampler failed to
+# initialise. Rescaling does not change correlations or sigma effects.
+# sigma-intercept prior normal(0, 0.5) on dm = normal(2.3, 0.5) on cm.
+# MAIN: all 540 trials. SENSITIVITY: emerged trials only (406), as the
+# STRICT syndrome model in 05, to check the effect of the 0 cm floor.
 # =====================================================================
 
-m_height_pred <- brm(
-  bf(max_height_aw | cens(h_cens) ~ Treatment + Infection.status + (1 |q| Snail_ID),
-     sigma ~ Treatment + Infection.status + (1 |q| Snail_ID)),
-  family = gaussian(),
-  data   = total_snails,
-  prior = c(
-    prior(normal(2.3, 0.5), class = "Intercept", dpar = "sigma"),
-    prior(normal(0, 0.5),   class = "b",         dpar = "sigma"),
-    prior(exponential(2),   class = "sd",        dpar = "sigma")
-  ),
-  chains = CHAINS, cores = 4, iter = ITER, warmup = WARMUP,
-  control = list(adapt_delta = 0.99), seed = 123
-)
+total_snails$h_dm <- total_snails$max_height_aw / 10
 
+fit_stab <- function(dat) {
+  brm(
+    bf(h_dm | cens(h_cens) ~ Treatment + Infection.status + (1 |q| Snail_ID),
+       sigma ~ Treatment + Infection.status + (1 |q| Snail_ID)),
+    family = gaussian(), data = dat,
+    prior = c(prior(normal(0, 0.5), class = "Intercept", dpar = "sigma"),
+              prior(normal(0, 0.5), class = "b",         dpar = "sigma"),
+              prior(exponential(2), class = "sd",        dpar = "sigma")),
+    chains = CHAINS, cores = 4, iter = ITER, warmup = WARMUP,
+    init = 0, control = list(adapt_delta = 0.999), seed = 123)
+}
+
+q3 <- function(x) round(c(median = median(x), quantile(x, c(.025, .975))), 3)
+
+# ---- MAIN (540 trials) ----------------------------------------------
+m_height_pred <- fit_stab(total_snails)
 summary(m_height_pred)
+rstan::check_hmc_diagnostics(m_height_pred$fit)
+q3(as_draws_df(m_height_pred)$cor_Snail_ID__Intercept__sigma_Intercept)
 
-pred_cor_h <- as_draws_df(m_height_pred)$cor_Snail_ID__Intercept__sigma_Intercept
-cat("\nlevel x predictability (climbing height)\n",
-    "  r    = ", round(median(pred_cor_h), 3), "\n",
-    "  95%  = [", round(quantile(pred_cor_h, 0.025), 3), ", ",
-    round(quantile(pred_cor_h, 0.975), 3), "]\n",
-    "  P(r>0) = ", round(mean(pred_cor_h > 0), 3), "\n", sep = "")
+# ---- SENSITIVITY (emerged trials only, 406) --------------------------
+m_height_pred_em <- fit_stab(subset(total_snails, emerged == 1))
+summary(m_height_pred_em)
+rstan::check_hmc_diagnostics(m_height_pred_em$fit)
+q3(as_draws_df(m_height_pred_em)$cor_Snail_ID__Intercept__sigma_Intercept)
 
+
+
+# ---- by infection status (30 snails/group), emerged trials only:
+#      with all trials the group models did not converge (many 0 cm scores)
+fit_stab_group <- function(status) {
+  brm(
+    bf(h_dm | cens(h_cens) ~ Treatment + (1 |q| Snail_ID),
+       sigma ~ Treatment + (1 |q| Snail_ID)),
+    family = gaussian(),
+    data   = subset(total_snails, Infection.status == status),
+    prior = c(prior(normal(0, 0.5), class = "Intercept", dpar = "sigma"),
+              prior(normal(0, 0.5), class = "b",         dpar = "sigma"),
+              prior(exponential(2), class = "sd",        dpar = "sigma")),
+    chains = CHAINS, cores = 4, iter = ITER, warmup = WARMUP,
+    init = 0, control = list(adapt_delta = 0.999), seed = 123)
+}
+
+m_height_pred_inf   <- fit_stab_group("Infected")
+m_height_pred_uninf <- fit_stab_group("Uninfected")
+
+rstan::check_hmc_diagnostics(m_height_pred_inf$fit)
+rstan::check_hmc_diagnostics(m_height_pred_uninf$fit)
+
+cor_h_inf   <- as_draws_df(m_height_pred_inf)$cor_Snail_ID__Intercept__sigma_Intercept
+cor_h_uninf <- as_draws_df(m_height_pred_uninf)$cor_Snail_ID__Intercept__sigma_Intercept
+q3(cor_h_inf)                 # Infected
+q3(cor_h_uninf)               # Uninfected
+q3(cor_h_inf - cor_h_uninf)   # difference (Infected - Uninfected)
 
 # =====================================================================
 # 7. SAVE FITTED MODELS  (06 reads models$m_int)
@@ -232,7 +268,7 @@ cat("\nlevel x predictability (climbing height)\n",
 saveRDS(
   list(
     m_int   = m_height_int,
-    m_slope = m_height_slope, m_pred = m_height_pred,
+    m_slope = m_height_slope, m_pred = m_height_pred, m_pred_em = m_height_pred_em,
     m_inf   = m_h_inf,       m_uninf = m_h_uninf,
     m_CON   = m_h_CON,       m_INV   = m_h_INV,   m_NAT = m_h_NAT,
     blups   = blups,
