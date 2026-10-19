@@ -54,7 +54,7 @@ str(total_snails[, c("Weight_g", "Height_cm", "Aperture_cm", "Width_cm")])
 # The cylinder was filled to the 3 cm waterline. max_height was recorded
 # from the base, so it includes the 3 cm water column.
 #
-# Conversion to height ABOVE the waterline (Allert's suggestion):
+# Conversion to height ABOVE the waterline:
 #   max_height == 0  -> snail stayed in the water (never emerged) -> 0
 #   max_height == 3  -> just emerged past the waterline, no further
 #                       climbing. Recorded as 3.1 (0.1 cm above water)

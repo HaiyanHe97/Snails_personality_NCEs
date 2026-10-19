@@ -223,6 +223,7 @@ m_pred_tte <- brm(
 
 summary(m_pred_tte)
 
+
 pred_cor_tte <- as_draws_df(m_pred_tte)$cor_Snail_ID__Intercept__sigma_Intercept
 cat("level x predictability (all snails): r =", round(median(pred_cor_tte), 3),
     " 95% [", round(quantile(pred_cor_tte, .025), 3), ",",
