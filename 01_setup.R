@@ -55,7 +55,8 @@ str(total_snails[, c("Weight_g", "Height_cm", "Aperture_cm", "Width_cm")])
 # from the base, so it includes the 3 cm water column.
 #
 # Conversion to height ABOVE the waterline:
-#   max_height == 0  -> snail stayed in the water (never emerged) -> 0
+#   max_height == 0  -> snail in the water (never emerged, or emerged
+#                       and returned to the water) -> 0
 #   max_height == 3  -> just emerged past the waterline, no further
 #                       climbing. Recorded as 3.1 (0.1 cm above water)
 #                       so these are DISTINCT from the in-water zeros.
@@ -84,6 +85,10 @@ stopifnot(
   sum(total_snails$max_height == 0)  == sum(total_snails$max_height_aw == 0),
   sum(total_snails$h_cens == "right") == sum(total_snails$max_height == 30)
 )
+
+# Height in dm, used only by the individual stability model in 02 (on the
+# cm scale that model cannot initialise; see 02, section 6).
+total_snails$h_dm <- total_snails$max_height_aw / 10
 
 # ---- 5. Checks ------------------------------------------------------
 
@@ -155,25 +160,33 @@ fig_dir <- "outputs/figures"
 CHAINS <- 4; ITER <- 4000; WARMUP <- 1000
 
 
-# ---- 9. Helper: repeatability (with CI) from a fitted brms model ----
+# ---- 9. Helpers: repeatability and posterior summaries --------------
 # R = among-individual variance / total variance, both on the log scale
 # for a lognormal model:  R = sd(Snail_ID)^2 / (sd(Snail_ID)^2 + sigma^2)
 # Keeps censored trials in, unlike rptR which would silently drop them.
+# get_R_draws() returns the posterior draws of R (needed for differences
+# between groups); get_R() returns median and 95% CrI, as before.
 
-get_R <- function(model, group = "Snail_ID") {
-
-  draws <- as_draws_df(model)
-
+get_R_draws <- function(model, group = "Snail_ID") {
+  draws  <- as_draws_df(model)
   sd_col <- paste0("sd_", group, "__Intercept")
   stopifnot(sd_col %in% names(draws), "sigma" %in% names(draws))
-
   var_among <- draws[[sd_col]]^2
-  var_resid <- draws[["sigma"]]^2
+  var_among / (var_among + draws[["sigma"]]^2)
+}
 
-  R <- var_among / (var_among + var_resid)
-
+get_R <- function(model, group = "Snail_ID") {
+  R <- get_R_draws(model, group)
   c(R   = median(R),
     lwr = quantile(R, 0.025, names = FALSE),
     upr = quantile(R, 0.975, names = FALSE))
 }
+
+# Median and 95% CrI of any posterior; for a difference between groups
+# also P(difference > 0). Groups are compared by the posterior of the
+# difference, not by whether their CrIs overlap.
+summ_draws <- function(x) round(c(median = median(x),
+                                  lwr = quantile(x, 0.025, names = FALSE),
+                                  upr = quantile(x, 0.975, names = FALSE)), 3)
+summ_diff  <- function(x) c(summ_draws(x), P_gt0 = round(mean(x > 0), 3))
 

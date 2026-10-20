@@ -12,6 +12,11 @@
 #
 # Climbing height is now height ABOVE the waterline (max_height_aw),
 # right-censored at 27 cm (ceiling = 30 cm from base, minus 3 cm water).
+#
+# Together vs separate: same rule as in 02 (see the header there).
+# Does a syndrome exist? -> ONE model (all snails). Does it differ between
+# infected and uninfected? -> SEPARATE models, compared by the posterior
+# of the difference.
 # =====================================================================
 
 source("01_setup.R")
@@ -58,7 +63,7 @@ get_cor_by <- function(model, resp_a, resp_b) {
 #   STRICT (406 trials, emerged == 1) — removes the shared driver.
 # =====================================================================
 
-# ---- FULL, MAIN: climbing height right-censored at 27 cm ------------
+# ---- FULL, MAIN: climbing height right-censored at 27 cm   [ONE model]
 bf_h2 <- bf(max_height_aw | cens(h_cens) ~ Treatment + Infection.status + (1 |q| Snail_ID))
 bf_t2 <- bf(time_to_emerge_cens | cens(censored) ~ Treatment + Infection.status +
               (1 |q| Snail_ID),
@@ -91,7 +96,7 @@ m_syn_full <- brm(
 cor_full <- get_cor_by(m_syn_full, "maxheightaw", "timetoemergecens")
 report_cor(cor_full, "FULL (540 trials, height NOT censored — sensitivity)")
 
-# ---- STRICT: emerged == 1 only (no censoring left on latency) ------
+# ---- STRICT: emerged == 1 only (no censoring left on latency)   [ONE model]
 # Censoring on height uses the ORIGINAL ceiling hit (max_height == 30);
 # on the max_height_aw scale this corresponds to 27 cm.
 dat_em <- subset(total_snails, emerged == 1)
@@ -117,7 +122,7 @@ report_cor(cor_strict, "STRICT (406 emerged trials)")
 cor_shrink <- cor_full_hcens - cor_strict
 cat("FULL - STRICT (median): ", round(median(cor_shrink), 3), "\n")
 
-# ---- By infection status (FULL structure) --------------------------
+# ---- By infection status (FULL structure)   [SEPARATE: compare correlations]
 bf_h_g <- bf(max_height_aw | cens(h_cens) ~ Treatment + (1 |q| Snail_ID))
 bf_t_g <- bf(time_to_emerge_cens | cens(censored) ~ Treatment + (1 |q| Snail_ID),
              family = lognormal())
@@ -130,6 +135,8 @@ fit_syn_group <- function(status) {
 }
 m_syn_inf   <- fit_syn_group("Infected")
 m_syn_uninf <- fit_syn_group("Uninfected")
+rstan::check_hmc_diagnostics(m_syn_inf$fit)    # 30 snails per group: check
+rstan::check_hmc_diagnostics(m_syn_uninf$fit)
 
 cor_ht_inf   <- get_cor_by(m_syn_inf,   "maxheightaw", "timetoemergecens")
 cor_ht_uninf <- get_cor_by(m_syn_uninf, "maxheightaw", "timetoemergecens")
@@ -151,7 +158,7 @@ cat("\nheight x tte, difference (Infected - Uninfected): ",
 # as the second response. Among-individual correlation of interest.
 # =====================================================================
 
-# ---- Overall (all snails) ------------------------------------------
+# ---- Overall (all snails)   [ONE model] -----------------------------
 bf_height  <- bf(max_height_aw | cens(h_cens) ~ Treatment + Infection.status + (1 |q| Snail_ID))
 bf_emerged <- bf(emerged    ~ Treatment + Infection.status + (1 |q| Snail_ID),
                  family = bernoulli())
@@ -171,7 +178,7 @@ cat("height x emerged — overall: r =", round(median(cor_he_all), 3),
     " 95% [", round(quantile(cor_he_all, 0.025), 3), ", ",
     round(quantile(cor_he_all, 0.975), 3), "]\n", sep = "")
 
-# ---- By infection status -------------------------------------------
+# ---- By infection status   [SEPARATE: compare correlations] --------
 fit_he_group <- function(status) {
   brm(bf(max_height_aw | cens(h_cens) ~ Treatment + (1 |q| Snail_ID)) +
         bf(emerged  ~ Treatment + (1 |q| Snail_ID), family = bernoulli()) +
@@ -182,6 +189,8 @@ fit_he_group <- function(status) {
 }
 model_brms_inf   <- fit_he_group("Infected")
 model_brms_uninf <- fit_he_group("Uninfected")
+rstan::check_hmc_diagnostics(model_brms_inf$fit)
+rstan::check_hmc_diagnostics(model_brms_uninf$fit)
 
 cor_he_inf   <- get_cor_by(model_brms_inf,   "maxheightaw", "emerged")
 cor_he_uninf <- get_cor_by(model_brms_uninf, "maxheightaw", "emerged")

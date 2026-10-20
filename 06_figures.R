@@ -4,8 +4,15 @@
 # All manuscript figures, built from the CENSORED models saved
 # by 02-05. Climbing height = height above the waterline
 # (max_height_aw), right-censored at 27 cm.
-# Global font size = 15 (except FIG 3 caterpillar ID labels,
-# kept small to avoid overlap).
+# Numbering follows the manuscript (Figure 1 = design, not here):
+#   Figure 2  Emergence: proportion emerged
+#   Figure 3  Time to emerge: Kaplan-Meier curves
+#   Figure 4  Climbing height: per-snail means (boxplot)
+#   Figure 5  Individual differences: BLUPs (a height, b time)
+#   Figure 6  Reaction norms (a height, b time)
+#   Figure S  Appendix: climbing height of snails that climbed
+# Global font size = 15 (except Figure 5 ID labels, kept small
+# to avoid overlap).
 # Output: outputs/figures/
 # ============================================================
 
@@ -13,9 +20,8 @@ source("01_setup.R")
 
 h   <- readRDS("outputs/models/height_models.rds")
 tte <- readRDS("outputs/models/tte_models.rds")
-syn <- readRDS("outputs/models/syndrome_models.rds")
 
-library(tidybayes)
+library(survival)   # Figure 3
 
 # ---- GLOBAL THEME: font size 15 everywhere -----------------
 theme_set(
@@ -33,7 +39,7 @@ theme_set(
 
 
 # ============================================================
-# FIG 1 — Emergence: proportion emerged, by treatment x infection
+# FIGURE 2 — Emergence: proportion emerged, treatment x infection
 # ============================================================
 
 emerged_prop <- total_snails %>%
@@ -60,14 +66,14 @@ p_emerge <- ggplot(emerged_prop,
   labs(x = NULL, y = "Proportion (%)", fill = NULL) +
   theme(legend.position = "bottom")
 p_emerge
-ggsave(file.path(fig_dir, "fig1_emergence_proportion.pdf"),
+ggsave(file.path(fig_dir, "fig2_emergence_proportion.pdf"),
        p_emerge, width = 10, height = 6)
-# ============================================================
-# FIG 2 — Kaplan-Meier "still in the water" curves
-# ============================================================
 
-library(survival)
-library(broom)
+# ============================================================
+# FIGURE 3 — Kaplan-Meier "still in the water" curves
+# Descriptive: trials treated as independent; inference is from
+# the censored lognormal model in 03.
+# ============================================================
 
 km_fit <- survfit(
   Surv(time_to_emerge_cens, emerged) ~ Treatment + Infection.status,
@@ -108,13 +114,13 @@ p_km_tte <- ggplot(km_df, aes(x = time, y = surv, colour = Infection)) +
        y = "Proportion still in the water (%)",
        colour = "Infection status")
 p_km_tte
-ggsave(file.path(fig_dir, "fig2_time_to_emerge_km.pdf"),
+ggsave(file.path(fig_dir, "fig3_time_to_emerge_km.pdf"),
        p_km_tte, width = 10, height = 5)
 
 # ============================================================
-# FIG 3a — Climbing height boxplot, RAW per-snail means
-#          (height above the waterline; ceiling values shown
-#          at their observed 27 cm for this descriptive plot)
+# FIGURE 4 — Climbing height boxplot, RAW per-snail means
+#            (height above the waterline; ceiling values shown
+#            at their observed 27 cm for this descriptive plot)
 # ============================================================
 
 snail_mean_height <- total_snails %>%
@@ -139,55 +145,16 @@ p_box_raw <- ggplot(snail_mean_height,
        fill = "Infection status", color = "Infection status")
 p_box_raw
 
-ggsave(file.path(fig_dir, "fig3a_height_box_raw.pdf"),
+ggsave(file.path(fig_dir, "fig4_height_box_raw.pdf"),
        p_box_raw, width = 8, height = 6)
 
 
 # ============================================================
-# FIG 3b — Climbing height, MODEL-PREDICTED (censored)
-#          From m_slope (censored random-slope): ceiling values
-#          handled as >= 27, not pinned at 27.
-# ============================================================
-
-newdat_h <- expand.grid(
-  Snail_ID  = levels(total_snails$Snail_ID),
-  Treatment = levels(total_snails$Treatment)
-) %>%
-  mutate(Infection.status = total_snails$Infection.status[
-    match(Snail_ID, total_snails$Snail_ID)])
-
-newdat_h$pred <- fitted(h$m_slope, newdata = newdat_h,
-                        re_formula = ~ (Treatment | Snail_ID),
-                        scale = "response")[, "Estimate"]
-
-group_pred_h <- newdat_h %>%
-  group_by(Treatment, Infection.status) %>%
-  summarise(pred = mean(pred), .groups = "drop")
-
-p_box_pred <- ggplot() +
-  geom_line(data = newdat_h,
-            aes(x = Treatment, y = pred, group = Snail_ID, color = Infection.status),
-            linewidth = 0.45, alpha = 0.18) +
-  geom_point(data = newdat_h,
-             aes(x = Treatment, y = pred, color = Infection.status),
-             size = 1.3, alpha = 0.25) +
-  geom_line(data = group_pred_h,
-            aes(x = Treatment, y = pred, group = Infection.status, color = Infection.status),
-            linewidth = 1.8) +
-  geom_point(data = group_pred_h,
-             aes(x = Treatment, y = pred, color = Infection.status),
-             shape = 18, size = 4) +
-  scale_color_manual(values = c(Infected = col_infected, Uninfected = col_uninfected)) +
-  labs(x = NULL, y = "Climbing height (cm), model-predicted",
-       color = "Infection status")
-p_box_pred
-ggsave(file.path(fig_dir, "fig3b_height_predicted.pdf"),
-       p_box_pred, width = 8, height = 6)
-
-
-# ============================================================
-# FIG 4 — Caterpillar (BLUP) plots  [ID labels kept small]
+# FIGURE 5 — Caterpillar (BLUP) plots  [ID labels kept small]
 #   (a) Climbing height  (b) Time to emerge (axis reversed)
+# BLUPs from m_height_int / m_tte: deviations from the value
+# predicted by treatment and infection status, so 0 (dashed)
+# = the average snail after accounting for both.
 # ============================================================
 
 blups_h <- h$blups
@@ -231,15 +198,17 @@ p_cat_t <- ggplot(re_t, aes(x = Snail_ID, y = fit, color = infection)) +
 
 p_caterpillar <- p_cat_h + p_cat_t + plot_layout(widths = c(1, 1))
 p_caterpillar
-ggsave(file.path(fig_dir, "fig4_caterpillar_combined.pdf"),
+ggsave(file.path(fig_dir, "fig5_caterpillar_combined.pdf"),
        p_caterpillar, width = 11, height = 10)
 
 
 
 
 # ============================================================
-# FIG 5 — Reaction norms: climbing height (a) + time to emerge (b)
-#         Model-predicted (censored models).
+# FIGURE 6 — Reaction norms: climbing height (a) + time to emerge (b)
+#            Model-predicted from the censored random-slope models
+#            (h$m_slope, tte$m_slope). Group line = mean (a) and
+#            median (b) of the individual predictions.
 # ============================================================
 
 # --- Panel a: climbing height (censored random-slope model) ---
@@ -329,34 +298,7 @@ p_b_rn <- p_tte_rn + labs(title = "b")
 
 p_reaction_norms <- (p_a_rn / p_b_rn) + plot_layout(guides = "collect")
 p_reaction_norms
-ggsave(file.path(fig_dir, "fig5_reaction_norms_combined.pdf"),
+ggsave(file.path(fig_dir, "fig6_reaction_norms_combined.pdf"),
        p_reaction_norms, width = 8, height = 9, units = "in")
 
 
-# ============================================================
-# FIG S — APPENDIX: climbing height conditional on emergence
-#         Boxplot, treatment x infection, ONLY the 364 trials
-#         where snails climbed above the waterline. Uses the
-#         ORIGINAL max_height (from base) for this supplementary
-#         plot, matching the conditional analysis.
-# ============================================================
-
-dat_climb_orig <- subset(total_snails, max_height > 0)
-
-snail_mean_climb <- dat_climb_orig %>%
-  group_by(Snail_ID, Treatment, Infection.status) %>%
-  summarise(mean_height = mean(max_height), .groups = "drop")
-
-p_box_conditional <- ggplot(snail_mean_climb,
-                            aes(x = Treatment, y = mean_height, fill = Infection.status)) +
-  geom_boxplot(position = dodge, width = 0.7, alpha = 0.65, outlier.shape = NA) +
-  geom_point(aes(color = Infection.status),
-             position = position_jitterdodge(jitter.width = 0.1, dodge.width = 0.8),
-             alpha = 0.5, size = 2, shape = 16) +
-  scale_fill_manual(values  = c(Infected = col_infected, Uninfected = col_uninfected)) +
-  scale_color_manual(values = c(Infected = col_infected, Uninfected = col_uninfected)) +
-  labs(x = NULL, y = "Climbing height (cm)\n(snails that climbed above the waterline)",
-       fill = "Infection status", color = "Infection status")
-p_box_conditional
-ggsave(file.path(fig_dir, "figS_height_conditional_box.pdf"),
-       p_box_conditional, width = 8, height = 6)

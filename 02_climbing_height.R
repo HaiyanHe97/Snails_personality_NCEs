@@ -5,14 +5,16 @@
 # 27 = climbed out of the cylinder -> right-censored (92/540).
 # Zeros are NOT censored. All 540 trials kept.
 #
-# MAIN:        right-censored Gaussian model (brms).
-# SENSITIVITY: old lmer, 27 treated as a real value.
+# Together vs separate (same rule in 02, 03 and 05):
+#   Means, and individual stability (within-individual variance,
+#   modelled through sigma) -> ONE model, infection as a fixed effect.
+#   Among-individual variances and correlations (repeatability,
+#   plasticity, syndrome) -> SEPARATE models per group, compared by the
+#   posterior of the difference, not by overlap of CrIs.
 #
 # Effect model = a-priori full model (Treatment x Infection), no model
-# selection. Repeatability, plasticity and individual stability use
-# additive fixed effects. Stability model fitted in dm (see section 6).
-#
-# Figures live in 06_figures.R. NOTE: 06 reads models$m_int.
+# selection. Repeatability, plasticity and stability use additive fixed
+# effects. Figures live in 06_figures.R (06 reads models$m_int).
 # =====================================================================
 
 source("01_setup.R")
@@ -22,16 +24,18 @@ table(total_snails$h_cens, total_snails$Treatment)
 
 
 # =====================================================================
-# 1. MAIN MODEL — Treatment x Infection (a-priori full model)
+# 1. MAIN MODEL — Treatment x Infection   [ONE model: means]
+# Do cues and infection relate to mean height, and does the cue effect
+# differ between infected and uninfected snails (interaction)?
 # =====================================================================
 
-# --- SENSITIVITY (OLD): no censoring, 30 treated as a real value -----
+# --- SENSITIVITY (OLD): no censoring, 27 treated as a real value -----
 model_height_old <- lmer(max_height_aw ~ Treatment * Infection.status +
                            (1 | Snail_ID), data = total_snails)
 summary(model_height_old)
 anova(model_height_old, type = 2)
 
-# --- MAIN: right-censored at 30, interaction -------------------------
+# --- MAIN: right-censored at 27, interaction -------------------------
 m_height_int <- brm(
   max_height_aw | cens(h_cens) ~ Treatment * Infection.status + (1 | Snail_ID),
   family  = gaussian(),
@@ -55,10 +59,10 @@ emm_h_inf <- emmeans(m_height_int, ~ Infection.status); pairs(emm_h_inf)
 
 
 # =====================================================================
-# 2. REPEATABILITY  (fixed effects additive — adjustment only)
+# 2. REPEATABILITY (personality)  (fixed effects additive)
 # =====================================================================
 
-# ---- 2.1 Overall ----------------------------------------------------
+# ---- 2.1 Overall   [ONE model: do snails differ consistently?] -------
 
 # SENSITIVITY (OLD): rptR, no censoring.
 rpt_height_old <- rpt(max_height_aw ~ Treatment + Infection.status + (1 | Snail_ID),
@@ -66,16 +70,15 @@ rpt_height_old <- rpt(max_height_aw ~ Treatment + Infection.status + (1 | Snail_
                       datatype = "Gaussian", nboot = 1000, npermut = 0)
 summary(rpt_height_old)
 
-# MAIN: overall R from the fitted model. R = var(Snail_ID)/(var+sigma^2);
-# fixed effects only adjust the mean, so this is numerically identical to
-# an additive fit to 3 decimals — Table 1 unaffected.
+# MAIN: overall R from the fitted model. Fixed effects only adjust the
+# mean, so this equals an additive fit to 3 decimals (Table 1 unaffected).
 R_height_overall <- get_R(m_height_int)
 print(R_height_overall)
 
-
-
-
-# ---- 2.2 By infection status (Treatment only after subsetting) ------
+# ---- 2.2 By infection status   [SEPARATE: R is a variance ratio] ------
+# R needs its own among-individual and residual variance in each group.
+# Different snails in each group -> independent posteriors, so the
+# difference of draws is a valid comparison.
 
 fit_h_inf <- function(status) {
   brm(max_height_aw | cens(h_cens) ~ Treatment + (1 | Snail_ID),
@@ -91,8 +94,12 @@ R_h_inf   <- get_R(m_h_inf)
 R_h_uninf <- get_R(m_h_uninf)
 print(rbind(Infected = R_h_inf, Uninfected = R_h_uninf))
 
+R_h_diff <- get_R_draws(m_h_inf) - get_R_draws(m_h_uninf)
+summ_diff(R_h_diff)                         # Infected - Uninfected
 
-# ---- 2.3 By treatment (Infection only after subsetting) -------------
+# ---- 2.3 By treatment   [SEPARATE: R per cue context] ----------------
+# Same snails in all treatments: differences between separate fits ignore
+# this dependence, so their CrIs are approximate.
 
 fit_h_trt <- function(trt) {
   brm(max_height_aw | cens(h_cens) ~ Infection.status + (1 | Snail_ID),
@@ -111,6 +118,10 @@ R_h_NAT <- get_R(m_h_NAT)
 print(rbind(CON = R_h_CON, INV = R_h_INV, NAT = R_h_NAT))
 # Compare with uncensored rptR (0.28 / 0.32 / 0.46). NAT has the most
 # ceiling hits, so its estimate is the one most likely to shift.
+
+summ_diff(get_R_draws(m_h_INV) - get_R_draws(m_h_CON))   # INV - CON
+summ_diff(get_R_draws(m_h_NAT) - get_R_draws(m_h_CON))   # NAT - CON
+summ_diff(get_R_draws(m_h_NAT) - get_R_draws(m_h_INV))   # NAT - INV
 
 
 # =====================================================================
@@ -143,11 +154,13 @@ cor.test(snail_wide$CON, snail_wide$INV)
 
 
 # =====================================================================
-# 5. PLASTICITY — random slopes  (fixed effects additive; adjustment)
-# Plasticity evidence = sd(TreatmentINV), sd(TreatmentNAT); a CrI clear
-# of zero means individuals differ in plasticity. (No LOO / model
-# selection, consistent with the a-priori approach.)
+# 5. INDIVIDUAL PLASTICITY — random slopes  (fixed effects additive)
 # =====================================================================
+
+# ---- 5.1 Overall   [ONE model: do snails differ in plasticity?] -------
+# Evidence = sd(TreatmentINV), sd(TreatmentNAT) clearly above zero;
+# also cor(Intercept, slope). Whether infection changes the MEAN cue
+# response is the interaction in m_height_int (section 1).
 
 m_height_slope <- brm(
   max_height_aw | cens(h_cens) ~ Treatment + Infection.status +
@@ -162,7 +175,9 @@ m_height_slope <- brm(
 summary(m_height_slope)
 rstan::check_hmc_diagnostics(m_height_slope$fit)
 
-# ---- Fit by infection status (for reaction-norm figure / cor) -------
+# ---- 5.2 By infection status   [SEPARATE: compare correlations] -----
+# Slope-slope correlation (INV vs NAT) per group, and its difference.
+
 fit_rn_cov <- function(status) {
   brm(bf(max_height_aw | cens(h_cens) ~ Treatment + (1 + Treatment |q| Snail_ID)),
       data = subset(total_snails, Infection.status == status),
@@ -176,35 +191,25 @@ model_reaction_norm_uninf <- fit_rn_cov("Uninfected")
 summary(model_reaction_norm_inf);   rhat(model_reaction_norm_inf)
 summary(model_reaction_norm_uninf); rhat(model_reaction_norm_uninf)
 
-# ---- Slope-slope correlation (INV vs NAT): infected vs uninfected ---
 posterior_INVNAT_inf   <- as_draws_df(model_reaction_norm_inf)$cor_Snail_ID__TreatmentINV__TreatmentNAT
 posterior_INVNAT_uninf <- as_draws_df(model_reaction_norm_uninf)$cor_Snail_ID__TreatmentINV__TreatmentNAT
-
-cat("\nslope-slope (INV vs NAT):\n")
-cat("  Infected:   r =", round(mean(posterior_INVNAT_inf), 3),
-    " 95% [", round(quantile(posterior_INVNAT_inf, 0.025), 3), ", ",
-    round(quantile(posterior_INVNAT_inf, 0.975), 3), "]\n", sep = "")
-cat("  Uninfected: r =", round(mean(posterior_INVNAT_uninf), 3),
-    " 95% [", round(quantile(posterior_INVNAT_uninf, 0.025), 3), ", ",
-    round(quantile(posterior_INVNAT_uninf, 0.975), 3), "]\n", sep = "")
-
 diff_INVNAT <- posterior_INVNAT_inf - posterior_INVNAT_uninf
-cat("  difference (Infected - Uninfected): ", round(mean(diff_INVNAT), 3),
-    " 95% [", round(quantile(diff_INVNAT, 0.025), 3), ", ",
-    round(quantile(diff_INVNAT, 0.975), 3), "]\n",
-    "  P(infected > uninfected) = ", round(mean(diff_INVNAT > 0), 3), "\n", sep = "")
+
+summ_draws(posterior_INVNAT_inf)            # Infected
+summ_draws(posterior_INVNAT_uninf)          # Uninfected
+summ_diff(diff_INVNAT)                      # Infected - Uninfected
 
 
 # =====================================================================
 # 6. INDIVIDUAL STABILITY — double-hierarchical model (additive)
-# Height in dm (cm / 10): on the cm scale the sampler failed to
+#    [ONE model: stability is a within-individual variance, so infected
+#     vs uninfected is the infection effect on sigma]
+# Height in dm (h_dm, built in 01): on the cm scale the sampler failed to
 # initialise. Rescaling does not change correlations or sigma effects.
 # sigma-intercept prior normal(0, 0.5) on dm = normal(2.3, 0.5) on cm.
 # MAIN: all 540 trials. SENSITIVITY: emerged trials only (406), as the
 # STRICT syndrome model in 05, to check the effect of the 0 cm floor.
 # =====================================================================
-
-total_snails$h_dm <- total_snails$max_height_aw / 10
 
 fit_stab <- function(dat) {
   brm(
@@ -218,48 +223,20 @@ fit_stab <- function(dat) {
     init = 0, control = list(adapt_delta = 0.999), seed = 123)
 }
 
-q3 <- function(x) round(c(median = median(x), quantile(x, c(.025, .975))), 3)
-
 # ---- MAIN (540 trials) ----------------------------------------------
 m_height_pred <- fit_stab(total_snails)
 summary(m_height_pred)
 rstan::check_hmc_diagnostics(m_height_pred$fit)
-q3(as_draws_df(m_height_pred)$cor_Snail_ID__Intercept__sigma_Intercept)
+summ_draws(as_draws_df(m_height_pred)$cor_Snail_ID__Intercept__sigma_Intercept)  # mean x stability
+summ_draws(as_draws_df(m_height_pred)$b_sigma_Infection.statusInfected)          # Infected vs Uninfected
 
 # ---- SENSITIVITY (emerged trials only, 406) --------------------------
 m_height_pred_em <- fit_stab(subset(total_snails, emerged == 1))
 summary(m_height_pred_em)
 rstan::check_hmc_diagnostics(m_height_pred_em$fit)
-q3(as_draws_df(m_height_pred_em)$cor_Snail_ID__Intercept__sigma_Intercept)
+summ_draws(as_draws_df(m_height_pred_em)$cor_Snail_ID__Intercept__sigma_Intercept)
+summ_draws(as_draws_df(m_height_pred_em)$b_sigma_Infection.statusInfected)
 
-
-
-# ---- by infection status (30 snails/group), emerged trials only:
-#      with all trials the group models did not converge (many 0 cm scores)
-fit_stab_group <- function(status) {
-  brm(
-    bf(h_dm | cens(h_cens) ~ Treatment + (1 |q| Snail_ID),
-       sigma ~ Treatment + (1 |q| Snail_ID)),
-    family = gaussian(),
-    data   = subset(total_snails, Infection.status == status),
-    prior = c(prior(normal(0, 0.5), class = "Intercept", dpar = "sigma"),
-              prior(normal(0, 0.5), class = "b",         dpar = "sigma"),
-              prior(exponential(2), class = "sd",        dpar = "sigma")),
-    chains = CHAINS, cores = 4, iter = ITER, warmup = WARMUP,
-    init = 0, control = list(adapt_delta = 0.999), seed = 123)
-}
-
-m_height_pred_inf   <- fit_stab_group("Infected")
-m_height_pred_uninf <- fit_stab_group("Uninfected")
-
-rstan::check_hmc_diagnostics(m_height_pred_inf$fit)
-rstan::check_hmc_diagnostics(m_height_pred_uninf$fit)
-
-cor_h_inf   <- as_draws_df(m_height_pred_inf)$cor_Snail_ID__Intercept__sigma_Intercept
-cor_h_uninf <- as_draws_df(m_height_pred_uninf)$cor_Snail_ID__Intercept__sigma_Intercept
-q3(cor_h_inf)                 # Infected
-q3(cor_h_uninf)               # Uninfected
-q3(cor_h_inf - cor_h_uninf)   # difference (Infected - Uninfected)
 
 # =====================================================================
 # 7. SAVE FITTED MODELS  (06 reads models$m_int)
@@ -273,7 +250,7 @@ saveRDS(
     m_CON   = m_h_CON,       m_INV   = m_h_INV,   m_NAT = m_h_NAT,
     blups   = blups,
     R_overall = R_height_overall,
-    R_inf = R_h_inf,  R_uninf = R_h_uninf,
+    R_inf = R_h_inf,  R_uninf = R_h_uninf, R_diff = R_h_diff,
     R_CON = R_h_CON,  R_INV = R_h_INV, R_NAT = R_h_NAT
   ),
   "outputs/models/height_models.rds"
@@ -287,26 +264,12 @@ saveRDS(
 )
 
 
-
 # =====================================================================
-# TEST: one model for infection-split repeatability (climbing height)
-# ---------------------------------------------------------------------
-# Goal: reproduce the by-infection R (currently from two subset models)
-# in a SINGLE model, and get the between-group difference with a CI.
-#
-# Both the among-individual SD and the residual SD are allowed to differ
-# by infection status, so this matches what the two subset models did
-# (each subset estimated its own among-individual and residual variance).
-#
-# Run after 02 has been sourced / m_h_inf & m_h_uninf exist, OR stand-
-# alone after source("01_setup.R").
+# CHECK (not reported): repeatability by infection in ONE model with
+# group-specific variances, gr(Snail_ID, by = Infection.status).
+# Gives R similar to the subset models in 2.2 (reviewer back-up).
+# Run after sections 1-2, or standalone after source("01_setup.R").
 # =====================================================================
-
-# source("01_setup.R")   
-
-
-# ---- single model: variances split by infection ---------------------
-
 
 m_h_byinf <- brm(
   bf(max_height_aw | cens(h_cens) ~ Treatment + Infection.status +
@@ -320,39 +283,19 @@ m_h_byinf <- brm(
 )
 
 summary(m_h_byinf)
-rstan::check_hmc_diagnostics(m_h_byinf$fit)   # watch for divergences
+rstan::check_hmc_diagnostics(m_h_byinf$fit)
 
-# ---- pull the two group-specific R's from the posterior -------------
 d <- as_draws_df(m_h_byinf)
-
-# among-individual SDs (brms names them by the 'by' level)
-# check names if this errors — print(grep("sd_Snail_ID", names(d), value=TRUE))
-sd_inf   <- d[["sd_Snail_ID__Intercept:Infection.statusInfected"]]
-sd_uninf <- d[["sd_Snail_ID__Intercept:Infection.statusUninfected"]]
-
-# residual SDs: sigma is on a log link here.
-# log(sigma) = b_sigma_Intercept (+ b_sigma_Infection.statusInfected for infected)
-sig_uninf <- exp(d[["b_sigma_Intercept"]])                                   # reference = Uninfected
+# if a name errors: print(grep("sd_Snail_ID", names(d), value = TRUE))
+sd_inf    <- d[["sd_Snail_ID__Intercept:Infection.statusInfected"]]
+sd_uninf  <- d[["sd_Snail_ID__Intercept:Infection.statusUninfected"]]
+sig_uninf <- exp(d[["b_sigma_Intercept"]])                                    # reference = Uninfected
 sig_inf   <- exp(d[["b_sigma_Intercept"]] + d[["b_sigma_Infection.statusInfected"]])
 
 R_inf_1   <- sd_inf^2   / (sd_inf^2   + sig_inf^2)
 R_uninf_1 <- sd_uninf^2 / (sd_uninf^2 + sig_uninf^2)
-R_diff    <- R_inf_1 - R_uninf_1
 
-q <- function(x) c(median = median(x),
-                   lwr = quantile(x, .025, names = FALSE),
-                   upr = quantile(x, .975, names = FALSE))
-
-cat("\n================ SINGLE MODEL (m_h_byinf) ================\n")
-cat("R Infected   :", round(q(R_inf_1),3),   "\n")
-cat("R Uninfected :", round(q(R_uninf_1),3), "\n")
-cat("Difference (Inf - Uninf):", round(q(R_diff),3),
-    " | P(diff>0) =", round(mean(R_diff > 0),3), "\n")
-
-# ---- side-by-side with the two-subset estimates ---------------------
-# (only runs if the subset models from 02 are in memory)
-if (exists("R_h_inf") && exists("R_h_uninf")) {
-  cat("\n---- SUBSET models (from 02) for comparison ----\n")
-  cat("R Infected   :", round(R_h_inf,3),   "\n")
-  cat("R Uninfected :", round(R_h_uninf,3), "\n")
-}
+summ_draws(R_inf_1)                          # Infected
+summ_draws(R_uninf_1)                        # Uninfected
+summ_diff(R_inf_1 - R_uninf_1)               # Infected - Uninfected
+if (exists("R_h_diff")) summ_diff(R_h_diff)  # same, from the subset models

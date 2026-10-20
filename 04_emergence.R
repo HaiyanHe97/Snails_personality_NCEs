@@ -9,6 +9,10 @@
 # (03), so it provides a check on the same behavioural signal using a
 # model with no censoring involved.
 #
+# Together vs separate: same rule as in 02. Here only ONE-model analyses
+# (means, overall repeatability); no group comparison of repeatability
+# (see section 2).
+#
 # Figures live in 06_figures.R.
 # =====================================================================
 
@@ -16,7 +20,7 @@ source("01_setup.R")
 
 
 # =====================================================================
-# 1. MAIN MODEL — treatment x infection
+# 1. MAIN MODEL — Treatment x Infection   [ONE model: means]
 # =====================================================================
 
 model_emerged <- glmer(
@@ -28,7 +32,9 @@ model_emerged <- glmer(
 summary(model_emerged)
 Anova(model_emerged, type = 2)
 
-# Pairwise contrasts
+# Pairwise contrasts = MARGINAL means on the logit scale (emmeans averages
+# over the other factor under the interaction model). Add
+# type = "response" to pairs() to get odds ratios instead.
 emmeans_treatment <- emmeans(model_emerged, ~ Treatment)
 pairs(emmeans_treatment)
 
@@ -37,13 +43,16 @@ pairs(emmeans_infection)
 
 
 # =====================================================================
-# 2. REPEATABILITY (overall only)
+# 2. REPEATABILITY (overall only)   [ONE model: do snails differ
+#    consistently?]
 # ---------------------------------------------------------------------
 # Emergence is binary and needs no censoring, so rptR is used directly.
 # NOT subdivided by treatment or infection: those subsets (n ~ 30-135)
 # frequently gave singular fits / estimates indistinguishable from zero,
 # reflecting the low information content of a binary measure at these
 # sample sizes. Only the overall repeatability is reported.
+# rptR gives R on the latent (link) and the original scale; state in the
+# paper which one is reported (usually the link scale).
 # =====================================================================
 
 rpt_emerged <- rpt(
