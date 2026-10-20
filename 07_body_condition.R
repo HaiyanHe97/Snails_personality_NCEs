@@ -84,6 +84,9 @@ cat(sprintf("  R2, shell size alone = %.3f\n", summary(m_size_only)$r.squared))
 # Model assumptions.
 par(mfrow = c(2, 2)); plot(m_condition); par(mfrow = c(1, 1))
 
+# Do infected and uninfected snails differ in shell size?
+m_size <- lm(shell_PC1 ~ Infection.status, data = morph)
+summary(m_size); confint(m_size)
 
 # ---- 4. Figure S1a: what the size axis represents --------------------
 
