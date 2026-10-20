@@ -1,5 +1,5 @@
 # =====================================================================
-# 07  SENSITIVITY ANALYSES
+# 08  SENSITIVITY ANALYSES
 # ---------------------------------------------------------------------
 # All sensitivity analyses in one place, in the order they appear in the
 # paper. Each refits a MAIN model from 02 or 05 on a subset of the data
@@ -12,7 +12,10 @@
 #                in which snails emerged (406). Reported in the text and
 #                the Table 3 legend.
 #   3. Table S3  Climbing height, individual stability: only trials in
-#                which snails emerged (406).
+#                which snails climbed above the waterline (height > 0; 364).
+# Both climbing height checks (1 and 3) remove all 0 cm scores; the
+# syndrome check (2) removes trials without emergence, because there the
+# problem is the censored latency of snails that never left the water.
 #   NOT REPORTED (checks of the censoring; set RUN_UNREPORTED <- TRUE)
 #   4. Climbing height without censoring: mean effects (lmer),
 #      repeatability (rptR), and the syndrome with height not censored.
@@ -88,14 +91,14 @@ summ_draws(cor_strict)           # STRICT, 406 trials
 
 
 # =====================================================================
-# 3. TABLE S3 — climbing height, individual stability, emerged trials
-#    only (406). Same model as MAIN in 02 (fit_stab, defined in 01).
-#    Checks whether the 0 cm scores of snails that stayed in the water
-#    drive the results. Table S3 = MAIN (540) next to this model.
+# 3. TABLE S3 — climbing height, individual stability, height > 0
+#    (364 trials). Same model as MAIN in 02 (fit_stab, defined in 01).
+#    Checks whether the 0 cm scores of snails in the water drive the
+#    results. Table S3 = MAIN (540) next to this model.
 # =====================================================================
 
-m_sens_stab <- fit_or_load("outputs/models/m_height_pred_em.rds",
-                           fit_stab(dat_em))
+m_sens_stab <- fit_or_load("outputs/models/sens_height_stab_pos.rds",
+                           fit_stab(dat_climb))
 rstan::check_hmc_diagnostics(m_sens_stab$fit)
 
 stab_tab <- function(m) {
@@ -108,7 +111,7 @@ stab_tab <- function(m) {
 }
 
 list("All trials (540)"           = stab_tab(h$m_pred),
-     "Emerged trials only (406)"  = stab_tab(m_sens_stab))
+     "Height above 0 cm (364)"    = stab_tab(m_sens_stab))
 
 
 # =====================================================================
@@ -143,3 +146,4 @@ if (RUN_UNREPORTED) {
         control = list(adapt_delta = 0.95), seed = 123))
   print(summ_draws(get_cor_by(m_syn_nocens, "maxheightaw", "timetoemergecens")))
 }
+
