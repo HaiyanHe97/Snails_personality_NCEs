@@ -128,9 +128,6 @@ re_tte$infection <- total_snails$Infection.status[
   match(re_tte$Snail_ID, total_snails$Snail_ID)]
 
 
-
-
-
 # =====================================================================
 # 5. INDIVIDUAL PLASTICITY — random slopes   [ONE model: do snails
 #    differ in plasticity?]  (fixed effects additive)
@@ -235,7 +232,7 @@ saveRDS(
     m_slope = m_tte_slope,
     m_rn_inf = m_rn_inf, m_rn_uninf = m_rn_uninf,
     m_pred  = m_pred_tte,
-    re_tte  = re_tte,    plast = plast,      ind_wide = ind_wide,
+    re_tte  = re_tte,    plast = plast,
     R_overall = rpt_tte_overall,
     R_inf = rpt_tte_infected, R_uninf = rpt_tte_uninfected, R_diff = R_tte_diff,
     R_CON = rpt_tte_CON, R_INV = rpt_tte_INV, R_NAT = rpt_tte_NAT

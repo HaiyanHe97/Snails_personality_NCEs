@@ -87,7 +87,7 @@ stopifnot(
 )
 
 # Height in dm, used only by the individual stability model in 02 (on the
-# cm scale that model cannot initialise; see 02, section 6).
+# cm scale that model cannot initialise; see 02, section 5).
 total_snails$h_dm <- total_snails$max_height_aw / 10
 
 # ---- 5. Checks ------------------------------------------------------
@@ -190,3 +190,35 @@ summ_draws <- function(x) round(c(median = median(x),
                                   upr = quantile(x, 0.975, names = FALSE)), 3)
 summ_diff  <- function(x) c(summ_draws(x), P_gt0 = round(mean(x > 0), 3))
 
+
+# Find the among-individual correlation between two responses in a
+# multivariate brms model (robust to how brms spells the names). Used by
+# 05 and 07.
+get_cor_by <- function(model, resp_a, resp_b) {
+  d   <- as_draws_df(model)
+  nm  <- grep("^cor_Snail_ID__", names(d), value = TRUE)
+  hit <- nm[grepl(resp_a, nm) & grepl(resp_b, nm)]
+  if (length(hit) != 1)
+    stop("Could not uniquely find cor column. Candidates:\n",
+         paste(nm, collapse = "\n"))
+  d[[hit]]
+}
+
+
+# ---- 10. Shared model: individual stability of climbing height -------
+# Used by 02 (all trials) and 07 (emerged trials only), so both fit
+# exactly the same model. Height in dm (h_dm): on the cm scale the
+# sampler fails to initialise. sigma-intercept prior normal(0, 0.5) on dm
+# = normal(2.3, 0.5) on cm. init = 0 and adapt_delta = 0.999 as in the
+# converged fit (0 divergences).
+fit_stab <- function(dat) {
+  brm(
+    bf(h_dm | cens(h_cens) ~ Treatment + Infection.status + (1 |q| Snail_ID),
+       sigma ~ Treatment + Infection.status + (1 |q| Snail_ID)),
+    family = gaussian(), data = dat,
+    prior = c(prior(normal(0, 0.5), class = "Intercept", dpar = "sigma"),
+              prior(normal(0, 0.5), class = "b",         dpar = "sigma"),
+              prior(exponential(2), class = "sd",        dpar = "sigma")),
+    chains = CHAINS, cores = 4, iter = ITER, warmup = WARMUP,
+    init = 0, control = list(adapt_delta = 0.999), seed = 123)
+}
