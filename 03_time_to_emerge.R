@@ -30,7 +30,11 @@ m_tte <- brm(
   control = list(adapt_delta = 0.95), seed = 1
 )
 
-summary(m_tte)          # incl. the two Treatment:Infection interaction rows
+summary(m_tte)
+
+# Table 1a: fixed effects, INCLUDING the two Treatment:Infection rows.
+# robust = TRUE gives posterior medians (as in all other tables).
+round(fixef(m_tte, robust = TRUE), 2)
 pp_check(m_tte)
 
 # Directional evidence on the interaction (for the Results text)
@@ -42,7 +46,7 @@ emm_tte_inf <- emmeans(m_tte, ~ Infection.status); pairs(emm_tte_inf)
 
 # Overall repeatability   [ONE model: do snails differ consistently?]
 # Fixed effects only adjust the mean, so numerically identical to an
-# additive fit (Table 1 unaffected).
+# additive fit (Table 2 unaffected).
 rpt_tte_overall <- get_R(m_tte)
 print(rpt_tte_overall)
 
@@ -124,32 +128,11 @@ re_tte$infection <- total_snails$Infection.status[
   match(re_tte$Snail_ID, total_snails$Snail_ID)]
 
 
-# =====================================================================
-# 5. CROSS-CONTEXT CONSISTENCY  (CON vs NAT / INV)
-# Raw means would mishandle censoring (uneven: CON infected 47/90), so
-# correlate per-snail random intercepts from the section-3 models.
-# Descriptive: correlating point estimates ignores their uncertainty.
-# =====================================================================
 
-get_ind <- function(model, label) {
-  ranef(model)$Snail_ID[, , "Intercept"] %>%
-    as.data.frame() %>%
-    tibble::rownames_to_column("Snail_ID") %>%
-    select(Snail_ID, !!label := Estimate)
-}
-
-ind_wide <- get_ind(m_tte_CON, "CON") %>%
-  full_join(get_ind(m_tte_NAT, "NAT"), by = "Snail_ID") %>%
-  full_join(get_ind(m_tte_INV, "INV"), by = "Snail_ID") %>%
-  mutate(Infection.status = total_snails$Infection.status[
-    match(Snail_ID, total_snails$Snail_ID)])
-
-cor.test(ind_wide$CON, ind_wide$NAT)
-cor.test(ind_wide$CON, ind_wide$INV)
 
 
 # =====================================================================
-# 6. INDIVIDUAL PLASTICITY — random slopes   [ONE model: do snails
+# 5. INDIVIDUAL PLASTICITY — random slopes   [ONE model: do snails
 #    differ in plasticity?]  (fixed effects additive)
 #   Q1 Do individuals differ in plasticity? -> sd(TreatmentINV/NAT) CrI > 0?
 #   Q2 Plasticity linked to type?           -> cor(Intercept, slope)
@@ -189,7 +172,7 @@ plast %>%
 
 
 # =====================================================================
-# 7. REACTION NORMS BY INFECTION STATUS   [SEPARATE: compare correlations]
+# 6. REACTION NORMS BY INFECTION STATUS   [SEPARATE: compare correlations]
 # Slope-slope correlation (INV vs NAT) per group, and its difference.
 # The two models are also used for the reaction-norm figure in 06.
 # =====================================================================
@@ -218,7 +201,7 @@ summ_diff(rn_cor_inf - rn_cor_uninf)        # Infected - Uninfected
 
 
 # =====================================================================
-# 8. INDIVIDUAL STABILITY — double-hierarchical (sigma) model (additive)
+# 7. INDIVIDUAL STABILITY — double-hierarchical (sigma) model (additive)
 #    [ONE model: stability is a within-individual variance, so infected
 #     vs uninfected is the infection effect on sigma]
 # sigma has a log link, so a larger sigma = less stable; a positive
@@ -241,7 +224,7 @@ summ_draws(as_draws_df(m_pred_tte)$b_sigma_Infection.statusInfected)          # 
 
 
 # =====================================================================
-# 9. SAVE FITTED MODELS  (06 reads m_tte)
+# 8. SAVE FITTED MODELS  (06 reads m_tte)
 # =====================================================================
 
 saveRDS(

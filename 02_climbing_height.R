@@ -14,7 +14,8 @@
 #
 # Effect model = a-priori full model (Treatment x Infection), no model
 # selection. Repeatability, plasticity and stability use additive fixed
-# effects. Figures live in 06_figures.R (06 reads models$m_int).
+# effects. All sensitivity analyses are in 07_sensitivity.R.
+# Figures live in 06_figures.R (06 reads models$m_int).
 # =====================================================================
 
 source("01_setup.R")
@@ -29,12 +30,6 @@ table(total_snails$h_cens, total_snails$Treatment)
 # differ between infected and uninfected snails (interaction)?
 # =====================================================================
 
-# --- SENSITIVITY (OLD): no censoring, 27 treated as a real value -----
-model_height_old <- lmer(max_height_aw ~ Treatment * Infection.status +
-                           (1 | Snail_ID), data = total_snails)
-summary(model_height_old)
-anova(model_height_old, type = 2)
-
 # --- MAIN: right-censored at 27, interaction -------------------------
 m_height_int <- brm(
   max_height_aw | cens(h_cens) ~ Treatment * Infection.status + (1 | Snail_ID),
@@ -44,15 +39,18 @@ m_height_int <- brm(
   control = list(adapt_delta = 0.95), seed = 123
 )
 
-# Table 2a: fixed effects, INCLUDING the two Treatment:Infection rows.
 summary(m_height_int)
+
+# Table 1a: fixed effects, INCLUDING the two Treatment:Infection rows.
+# robust = TRUE gives posterior medians (as in all other tables).
+round(fixef(m_height_int, robust = TRUE), 2)
 
 # PP-check will look imperfect: 176/540 heights are exactly 0 and a
 # Gaussian cannot spike at zero. Censoring fixes the ceiling, not the
 # floor; effects are large and consistent -> note in limitations.
 pp_check(m_height_int)
 
-# Table 2b: pairwise contrasts = MARGINAL means (emmeans averages over
+# Table 1b: pairwise contrasts = MARGINAL means (emmeans averages over
 # the other factor under the interaction model).
 emm_h_trt <- emmeans(m_height_int, ~ Treatment);        pairs(emm_h_trt)
 emm_h_inf <- emmeans(m_height_int, ~ Infection.status); pairs(emm_h_inf)
@@ -64,14 +62,8 @@ emm_h_inf <- emmeans(m_height_int, ~ Infection.status); pairs(emm_h_inf)
 
 # ---- 2.1 Overall   [ONE model: do snails differ consistently?] -------
 
-# SENSITIVITY (OLD): rptR, no censoring.
-rpt_height_old <- rpt(max_height_aw ~ Treatment + Infection.status + (1 | Snail_ID),
-                      grname = "Snail_ID", data = total_snails,
-                      datatype = "Gaussian", nboot = 1000, npermut = 0)
-summary(rpt_height_old)
-
 # MAIN: overall R from the fitted model. Fixed effects only adjust the
-# mean, so this equals an additive fit to 3 decimals (Table 1 unaffected).
+# mean, so this equals an additive fit to 3 decimals (Table 2 unaffected).
 R_height_overall <- get_R(m_height_int)
 print(R_height_overall)
 
@@ -138,26 +130,10 @@ blups$infection <- total_snails$Infection.status[
 
 
 # =====================================================================
-# 4. CROSS-CONTEXT CONSISTENCY (raw per-snail means; model-free)
-# 92 ceiling values slightly attenuate these; ranking preserved, no refit.
+# 4. INDIVIDUAL PLASTICITY — random slopes  (fixed effects additive)
 # =====================================================================
 
-snail_mean <- total_snails %>%
-  group_by(Snail_ID, Treatment, Infection.status) %>%
-  summarise(mean_height = mean(max_height_aw), .groups = "drop")
-
-snail_wide <- snail_mean %>%
-  pivot_wider(names_from = Treatment, values_from = mean_height)
-
-cor.test(snail_wide$CON, snail_wide$NAT)
-cor.test(snail_wide$CON, snail_wide$INV)
-
-
-# =====================================================================
-# 5. INDIVIDUAL PLASTICITY — random slopes  (fixed effects additive)
-# =====================================================================
-
-# ---- 5.1 Overall   [ONE model: do snails differ in plasticity?] -------
+# ---- 4.1 Overall   [ONE model: do snails differ in plasticity?] -------
 # Evidence = sd(TreatmentINV), sd(TreatmentNAT) clearly above zero;
 # also cor(Intercept, slope). Whether infection changes the MEAN cue
 # response is the interaction in m_height_int (section 1).
@@ -175,7 +151,7 @@ m_height_slope <- brm(
 summary(m_height_slope)
 rstan::check_hmc_diagnostics(m_height_slope$fit)
 
-# ---- 5.2 By infection status   [SEPARATE: compare correlations] -----
+# ---- 4.2 By infection status   [SEPARATE: compare correlations] -----
 # Slope-slope correlation (INV vs NAT) per group, and its difference.
 
 fit_rn_cov <- function(status) {
@@ -201,51 +177,29 @@ summ_diff(diff_INVNAT)                      # Infected - Uninfected
 
 
 # =====================================================================
-# 6. INDIVIDUAL STABILITY — double-hierarchical model (additive)
+# 5. INDIVIDUAL STABILITY — double-hierarchical model (additive)
 #    [ONE model: stability is a within-individual variance, so infected
 #     vs uninfected is the infection effect on sigma]
-# Height in dm (h_dm, built in 01): on the cm scale the sampler failed to
-# initialise. Rescaling does not change correlations or sigma effects.
-# sigma-intercept prior normal(0, 0.5) on dm = normal(2.3, 0.5) on cm.
-# MAIN: all 540 trials. SENSITIVITY: emerged trials only (406), as the
-# STRICT syndrome model in 05, to check the effect of the 0 cm floor.
+# Model defined once in 01 (fit_stab): height in dm, because on the cm
+# scale the sampler failed to initialise. Rescaling does not change
+# correlations or sigma effects. Sensitivity (emerged trials only): 07.
 # =====================================================================
 
-fit_stab <- function(dat) {
-  brm(
-    bf(h_dm | cens(h_cens) ~ Treatment + Infection.status + (1 |q| Snail_ID),
-       sigma ~ Treatment + Infection.status + (1 |q| Snail_ID)),
-    family = gaussian(), data = dat,
-    prior = c(prior(normal(0, 0.5), class = "Intercept", dpar = "sigma"),
-              prior(normal(0, 0.5), class = "b",         dpar = "sigma"),
-              prior(exponential(2), class = "sd",        dpar = "sigma")),
-    chains = CHAINS, cores = 4, iter = ITER, warmup = WARMUP,
-    init = 0, control = list(adapt_delta = 0.999), seed = 123)
-}
-
-# ---- MAIN (540 trials) ----------------------------------------------
 m_height_pred <- fit_stab(total_snails)
 summary(m_height_pred)
 rstan::check_hmc_diagnostics(m_height_pred$fit)
 summ_draws(as_draws_df(m_height_pred)$cor_Snail_ID__Intercept__sigma_Intercept)  # mean x stability
 summ_draws(as_draws_df(m_height_pred)$b_sigma_Infection.statusInfected)          # Infected vs Uninfected
 
-# ---- SENSITIVITY (emerged trials only, 406) --------------------------
-m_height_pred_em <- fit_stab(subset(total_snails, emerged == 1))
-summary(m_height_pred_em)
-rstan::check_hmc_diagnostics(m_height_pred_em$fit)
-summ_draws(as_draws_df(m_height_pred_em)$cor_Snail_ID__Intercept__sigma_Intercept)
-summ_draws(as_draws_df(m_height_pred_em)$b_sigma_Infection.statusInfected)
-
 
 # =====================================================================
-# 7. SAVE FITTED MODELS  (06 reads models$m_int)
+# 6. SAVE FITTED MODELS  (06 reads models$m_int)
 # =====================================================================
 
 saveRDS(
   list(
     m_int   = m_height_int,
-    m_slope = m_height_slope, m_pred = m_height_pred, m_pred_em = m_height_pred_em,
+    m_slope = m_height_slope, m_pred = m_height_pred,
     m_inf   = m_h_inf,       m_uninf = m_h_uninf,
     m_CON   = m_h_CON,       m_INV   = m_h_INV,   m_NAT = m_h_NAT,
     blups   = blups,
