@@ -40,6 +40,8 @@ theme_set(
 
 # ============================================================
 # FIGURE 2 — Emergence: proportion emerged, treatment x infection
+# colour = infection status (named on the x axis);
+# dark = emerged, light = not emerged (one shared legend)
 # ============================================================
 
 emerged_prop <- total_snails %>%
@@ -52,23 +54,19 @@ emerged_prop <- total_snails %>%
 
 p_emerge <- ggplot(emerged_prop,
                    aes(x = Infection.status, y = prop,
-                       fill = interaction(emerged, Infection.status))) +
+                       fill = Infection.status, alpha = emerged)) +
   geom_bar(stat = "identity", width = 0.7) +
   facet_wrap(~ Treatment) +
-  scale_fill_manual(
-    values = c("Emerged.Infected"       = col_infected,
-               "Not emerged.Infected"   = col_infected_light,
-               "Emerged.Uninfected"     = col_uninfected,
-               "Not emerged.Uninfected" = col_uninfected_light),
-    breaks = c("Emerged.Uninfected", "Not emerged.Uninfected"),
-    labels = c("Emerged", "Not emerged")) +
+  scale_fill_manual(values = c(Infected = col_infected, Uninfected = col_uninfected),
+                    guide = "none") +
+  scale_alpha_manual(values = c("Emerged" = 1, "Not emerged" = 0.5)) +
+  guides(alpha = guide_legend(override.aes = list(fill = "gray30"))) +
   scale_y_continuous(labels = function(x) x * 100) +
-  labs(x = NULL, y = "Proportion (%)", fill = NULL) +
+  labs(x = NULL, y = "Proportion (%)", alpha = NULL) +
   theme(legend.position = "bottom")
 p_emerge
 ggsave(file.path(fig_dir, "fig2_emergence_proportion.pdf"),
        p_emerge, width = 10, height = 6)
-
 # ============================================================
 # FIGURE 3 — Kaplan-Meier "still in the water" curves
 # Descriptive: trials treated as independent; inference is from
@@ -116,6 +114,52 @@ p_km_tte <- ggplot(km_df, aes(x = time, y = surv, colour = Infection)) +
 p_km_tte
 ggsave(file.path(fig_dir, "fig3_time_to_emerge_km.pdf"),
        p_km_tte, width = 10, height = 5)
+
+# ============================================================
+# FIGURE 3 (combined) — Kaplan-Meier curves, all predator cues
+# and both infection groups in one panel
+# colour = infection status, linetype = predator cue
+# ============================================================
+
+
+
+km_fit <- survfit(
+  Surv(time_to_emerge_cens, emerged) ~ Treatment + Infection.status,
+  data = total_snails
+)
+
+km_df <- data.frame(
+  time   = km_fit$time,
+  surv   = km_fit$surv,
+  strata = rep(names(km_fit$strata), km_fit$strata)
+) %>%
+  mutate(
+    Treatment = factor(trimws(sub(".*Treatment=([^,]+),.*", "\\1", strata)),
+                       levels = c("CON", "INV", "NAT")),
+    Infection = factor(trimws(sub(".*Infection.status=(.*)$", "\\1", strata)),
+                       levels = c("Uninfected", "Infected"))
+  ) %>%
+  group_by(Treatment, Infection) %>%
+  group_modify(~ add_row(.x, time = 0, surv = 1, .before = 1)) %>%
+  ungroup()
+
+p_km_tte_all <- ggplot(km_df,
+                       aes(x = time, y = surv,
+                           colour = Infection, linetype = Treatment,
+                           group = interaction(Infection, Treatment))) +
+  geom_step(linewidth = 1.1) +
+  scale_colour_manual(values = c("Infected"   = col_infected,
+                                 "Uninfected" = col_uninfected)) +
+  scale_linetype_manual(values = c(CON = "dotted", INV = "dashed", NAT = "solid")) +
+  scale_y_continuous(labels = function(x) x * 100, limits = c(0, 1)) +
+  scale_x_continuous(limits = c(0, 20), breaks = seq(0, 20, 5)) +
+  labs(x = "Time (min)",
+       y = "Proportion still in the water (%)",
+       colour = "Infection status", linetype = "Predator cue") +
+  theme(legend.key.width = grid::unit(1.5, "cm"))
+p_km_tte_all
+ggsave(file.path(fig_dir, "fig3b_time_to_emerge_km_combined.pdf"),
+       p_km_tte_all, width = 8, height = 6)
 
 # ============================================================
 # FIGURE 4 — Climbing height boxplot, RAW per-snail means
