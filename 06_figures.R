@@ -271,7 +271,8 @@ newdat_h_rn$pred <- fitted(h$m_slope, newdata = newdat_h_rn,
 
 group_pred_h_rn <- newdat_h_rn %>%
   group_by(Treatment, Infection.status) %>%
-  summarise(pred = mean(pred), .groups = "drop")
+  summarise(pred = median(pred), .groups = "drop")
+
 
 p_height_rn <- ggplot() +
   geom_line(data = newdat_h_rn,

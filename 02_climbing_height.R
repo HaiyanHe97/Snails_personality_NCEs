@@ -138,8 +138,7 @@ blups$infection <- total_snails$Infection.status[
 # also cor(Intercept, slope). Whether infection changes the MEAN cue
 # response is the interaction in m_height_int (section 1).
 
-m_height_slope <- brm(
-  max_height_aw | cens(h_cens) ~ Treatment + Infection.status +
+m_height_slope <- brm(max_height_aw | cens(h_cens) ~ Treatment + Infection.status +
     (1 + Treatment | Snail_ID),
   family  = gaussian(),
   data    = total_snails,
