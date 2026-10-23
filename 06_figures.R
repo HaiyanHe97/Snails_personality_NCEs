@@ -251,7 +251,7 @@ ggsave(file.path(fig_dir, "fig5_caterpillar_combined.pdf"),
 # ============================================================
 # FIGURE 6 — Reaction norms: climbing height (a) + time to emerge (b)
 #            Model-predicted from the censored random-slope models
-#            (h$m_slope, tte$m_slope). Group line = mean (a) and
+#            (h$m_slope, tte$m_slope). Group line = median (a) and
 #            median (b) of the individual predictions.
 # ============================================================
 
